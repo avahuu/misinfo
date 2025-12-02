@@ -4,7 +4,7 @@ from collections import Counter
 import re
 
 # --- load csv ---
-df = pd.read_csv("tweets_usa912152217_since_2020-01-01.csv")
+df = pd.read_csv("/Users/avahu/projects/twitter-scraper/data/tweets_usa912152217.csv")
 
 # --- merge text ---
 all_text = df["text"].astype(str).str.cat(sep=" ")
@@ -39,3 +39,19 @@ for word, freq in top50:
 # --- save to CSV ---
 pd.DataFrame(top50, columns=["keyword", "count"]).to_csv("top_keywords.csv", index=False)
 print("\n已保存关键词到 top_keywords.csv")
+
+# 先取出关键词列表
+top_keywords = [kw for kw, _ in top50]
+
+def match_keywords(text: str):
+    """
+    返回这条 tweet 中出现的 top keywords 列表
+    """
+    text = str(text)
+    return [kw for kw in top_keywords if kw in text]
+
+# 在原 df 上新增一列 matched_keywords
+df["matched_keywords"] = df["text"].astype(str).apply(match_keywords)
+
+# save to CSV
+df.to_csv("tweets_with_keywords.csv", index=False, encoding="utf-8-sig")
