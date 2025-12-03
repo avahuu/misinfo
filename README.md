@@ -1,0 +1,1 @@
+This is Ava's final theis at J-School. The first part visualization is about an account on X that spreads misinformation. Scraped all of its posts from the past two months—314 in total—and summarized the most frequently mentioned keywords in those tweets. 
