@@ -14,10 +14,10 @@ all_text = re.sub(r"http\S+", "", all_text)   # 去掉 URL
 all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)  # 去掉英文/数字
 all_text = re.sub(r"[^\u4e00-\u9fa5]", " ", all_text)  # 去掉非中文字符
 
-# --- 分词 ---
+# ---  ---
 words = jieba.lcut(all_text)
 
-# --- 自定义停用词---
+# --- define stopwords ---
 stopwords = set([
     "我们","你们","他们","因为","所以","以及","就是","这个","那个","可以",
     "通过","一个","一些","同时","已经","没有","那么","自己","如果",

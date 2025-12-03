@@ -1,9 +1,8 @@
 import pandas as pd
 
-# 载入刚刚生成的文件
 df = pd.read_csv("tweets_with_keywords.csv")
 
-# matched_keywords 是字符串形式的列表，需要转换
+# matched_keywords 
 import ast
 
 def safe_eval(x):
