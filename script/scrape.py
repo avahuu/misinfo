@@ -45,7 +45,7 @@ def fetch_since_2020_to_csv(
     user_name: str,
     include_replies: bool = True,
     max_pages: int = 1000,
-    output_csv: str = "tweets_usa912152217_since_2020-01-01.csv",
+    output_csv: str = "tweets_usa912152217.csv",
 ):
     headers = {
         "X-API-Key": API_KEY
