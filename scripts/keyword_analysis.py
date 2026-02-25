@@ -14,12 +14,12 @@ def analyze_keywords(user_name: str):
     tweets_kw_csv = os.path.join(data_dir, "tweets_with_keywords.csv")
 
     if not os.path.exists(tweets_kw_csv):
-        print(f"错误：找不到 {tweets_kw_csv}")
-        print("请先运行：python scripts/clean.py", user_name)
+        print(f"Error: {tweets_kw_csv} not found")
+        print(f"Please run first: python scripts/clean.py {user_name}")
         sys.exit(1)
 
     df = pd.read_csv(tweets_kw_csv)
-    print(f"加载 {len(df)} 条推文 from {tweets_kw_csv}")
+    print(f"Loaded {len(df)} tweets from {tweets_kw_csv}")
 
     def safe_eval(x):
         try:
@@ -29,10 +29,10 @@ def analyze_keywords(user_name: str):
 
     df["matched_keywords"] = df["matched_keywords"].apply(safe_eval)
 
-    # 统计关键词 → 出现的 tweet 数
+    # Count keyword -> number of tweets containing it
     keyword_tweet_count = {}
     for kws in df["matched_keywords"]:
-        for kw in set(kws):
+        for kw in set(kws):  # Use set to avoid double-counting within a tweet
             keyword_tweet_count[kw] = keyword_tweet_count.get(kw, 0) + 1
 
     df_kw = pd.DataFrame(
@@ -42,14 +42,14 @@ def analyze_keywords(user_name: str):
 
     output_csv = os.path.join(data_dir, "keyword_tweet_counts.csv")
     df_kw.to_csv(output_csv, index=False, encoding="utf-8-sig")
-    print(f"已保存到 {output_csv}")
+    print(f"Saved to {output_csv}")
     print(df_kw.head(20).to_string(index=False))
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法：python scripts/keyword_analysis.py <username>")
-        print("例如：python scripts/keyword_analysis.py usa912152217")
+        print("Usage: python scripts/keyword_analysis.py <username>")
+        print("Example: python scripts/keyword_analysis.py usa912152217")
         sys.exit(1)
 
     analyze_keywords(sys.argv[1])

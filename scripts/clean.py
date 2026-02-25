@@ -16,25 +16,25 @@ def clean_and_extract_keywords(user_name: str):
     tweets_csv = os.path.join(data_dir, "tweets.csv")
 
     if not os.path.exists(tweets_csv):
-        print(f"错误：找不到 {tweets_csv}")
+        print(f"Error: {tweets_csv} not found")
         sys.exit(1)
 
-    # --- load csv ---
+    # Load CSV
     df = pd.read_csv(tweets_csv)
-    print(f"加载 {len(df)} 条推文 from {tweets_csv}")
+    print(f"Loaded {len(df)} tweets from {tweets_csv}")
 
-    # --- merge text ---
+    # Merge all text
     all_text = df["text"].astype(str).str.cat(sep=" ")
 
-    # --- clean ---
-    all_text = re.sub(r"http\S+", "", all_text)
-    all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)
-    all_text = re.sub(r"[^\u4e00-\u9fa5]", " ", all_text)
+    # Clean text
+    all_text = re.sub(r"http\S+", "", all_text)       # Remove URLs
+    all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)  # Remove English/numbers
+    all_text = re.sub(r"[^\u4e00-\u9fa5]", " ", all_text)  # Keep only Chinese chars
 
-    # --- 分词 ---
+    # Tokenize with jieba
     words = jieba.lcut(all_text)
 
-    # --- stopwords ---
+    # Stopwords
     stopwords = set([
         "我们", "你们", "他们", "因为", "所以", "以及", "就是", "这个", "那个", "可以",
         "通过", "一个", "一些", "同时", "已经", "没有", "那么", "自己", "如果",
@@ -46,17 +46,17 @@ def clean_and_extract_keywords(user_name: str):
     counter = Counter(words)
     top50 = counter.most_common(50)
 
-    # --- export ---
-    print("===== Top 50 中文关键词 =====")
+    # Print results
+    print("===== Top 50 Chinese Keywords =====")
     for word, freq in top50:
         print(f"{word}: {freq}")
 
-    # --- save ---
+    # Save top keywords
     top_kw_csv = os.path.join(data_dir, "top_keywords.csv")
     pd.DataFrame(top50, columns=["keyword", "count"]).to_csv(top_kw_csv, index=False)
-    print(f"\n已保存关键词到 {top_kw_csv}")
+    print(f"\nKeywords saved to {top_kw_csv}")
 
-    # --- match keywords to tweets ---
+    # Match keywords to tweets
     top_keywords = [kw for kw, _ in top50]
 
     def match_keywords(text: str):
@@ -67,13 +67,13 @@ def clean_and_extract_keywords(user_name: str):
 
     tweets_kw_csv = os.path.join(data_dir, "tweets_with_keywords.csv")
     df.to_csv(tweets_kw_csv, index=False, encoding="utf-8-sig")
-    print(f"已保存带关键词的推文到 {tweets_kw_csv}")
+    print(f"Tweets with keywords saved to {tweets_kw_csv}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法：python scripts/clean.py <username>")
-        print("例如：python scripts/clean.py usa912152217")
+        print("Usage: python scripts/clean.py <username>")
+        print("Example: python scripts/clean.py usa912152217")
         sys.exit(1)
 
     clean_and_extract_keywords(sys.argv[1])

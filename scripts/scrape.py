@@ -8,18 +8,18 @@ from dateutil.relativedelta import relativedelta
 import requests
 from dotenv import load_dotenv
 
-# read api key
+# Load API key
 load_dotenv()
 API_KEY = os.getenv("API_KEY")
 
-# set constants
+# Constants
 BASE_URL = "https://api.twitterapi.io/twitter/tweet/advanced_search"
 
-# 时间范围：过去两年
-END_DATE = date.today() + timedelta(days=1)
+# Time range: past two years
+END_DATE = date.today() + timedelta(days=1)  # Tomorrow, to include today's tweets
 START_DATE = date(2024, 2, 24)
 
-# csv fields
+# CSV fields
 FIELDS = [
     "id",
     "createdAt",
@@ -32,16 +32,18 @@ FIELDS = [
     "bookmarkCount",
 ]
 
-REQUEST_TIMEOUT = 30
-MAX_RETRIES = 5
+REQUEST_TIMEOUT = 30  # Max 30 seconds per request
+MAX_RETRIES = 5       # Max 5 retries per page (429 or timeout)
 
 
 def parse_twitter_datetime(created_at_str: str) -> date:
+    """Parse Twitter's createdAt format into a Python date object."""
     dt = datetime.strptime(created_at_str, "%a %b %d %H:%M:%S %z %Y")
     return dt.date()
 
 
 def generate_monthly_windows(start: date, end: date):
+    """Generate monthly time windows from newest to oldest."""
     windows = []
     current_end = end
     while current_end > start:
@@ -54,10 +56,11 @@ def generate_monthly_windows(start: date, end: date):
 
 
 def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
+    """Fetch all tweets within a time window using cursor pagination."""
     cursor = ""
     page = 1
     window_total = 0
-    max_pages = 200
+    max_pages = 200  # Safety limit per window
     retries = 0
 
     query = f"from:{user_name} since:{since_date.isoformat()} until:{until_date.isoformat()}"
@@ -69,41 +72,43 @@ def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
             "cursor": cursor,
         }
 
-        print(f"    第 {page} 页, cursor={cursor[:30]}{'...' if len(cursor) > 30 else ''}")
+        print(f"    Page {page}, cursor={cursor[:30]}{'...' if len(cursor) > 30 else ''}")
 
         try:
             res = requests.get(BASE_URL, headers=headers, params=params, timeout=REQUEST_TIMEOUT)
         except requests.exceptions.Timeout:
             retries += 1
-            print(f"    请求超时（第 {retries} 次重试）...")
+            print(f"    Request timed out (retry {retries})...")
             if retries >= MAX_RETRIES:
-                print(f"    超过最大重试次数 {MAX_RETRIES}，跳过本窗口剩余部分")
+                print(f"    Max retries ({MAX_RETRIES}) reached, skipping rest of window")
                 break
             time.sleep(6)
             continue
         except requests.exceptions.RequestException as e:
             retries += 1
-            print(f"    网络异常：{e}（第 {retries} 次重试）...")
+            print(f"    Network error: {e} (retry {retries})...")
             if retries >= MAX_RETRIES:
-                print(f"    超过最大重试次数 {MAX_RETRIES}，跳过本窗口剩余部分")
+                print(f"    Max retries ({MAX_RETRIES}) reached, skipping rest of window")
                 break
             time.sleep(6)
             continue
 
         if res.status_code == 429:
             retries += 1
-            print(f"    命中限速（429），第 {retries} 次重试，休息 6 秒...")
+            print(f"    Rate limited (429), retry {retries}, sleeping 6s...")
             if retries >= MAX_RETRIES:
-                print(f"    超过最大重试次数 {MAX_RETRIES}，跳过本窗口剩余部分")
+                print(f"    Max retries ({MAX_RETRIES}) reached, skipping rest of window")
                 break
             time.sleep(6)
             continue
 
         if res.status_code != 200:
-            print(f"    请求失败（{res.status_code}）：{res.text}")
+            print(f"    Request failed ({res.status_code}): {res.text}")
             break
 
+        # Success, reset retry counter
         retries = 0
+
         resp_json = res.json()
         tweets = resp_json.get("tweets", [])
 
@@ -130,12 +135,14 @@ def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
             writer.writerow(row)
             window_total += 1
 
+        # Pagination
         has_next = resp_json.get("has_next_page")
         next_cursor = resp_json.get("next_cursor")
 
         if not has_next or not next_cursor:
             break
 
+        # Free tier rate limit sleep
         time.sleep(5.2)
         cursor = next_cursor
         page += 1
@@ -144,6 +151,7 @@ def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
 
 
 def load_existing_ids(csv_path):
+    """Load existing CSV and return seen tweet IDs and covered months."""
     seen_ids = set()
     covered_months = set()
     if not os.path.exists(csv_path):
@@ -167,7 +175,7 @@ def load_existing_ids(csv_path):
 
 
 def get_data_dir(user_name: str) -> str:
-    """返回 data/<user_name>/ 目录路径，自动创建。"""
+    """Return data/<user_name>/ directory path, creating it if needed."""
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     data_dir = os.path.join(project_root, "data", user_name)
     os.makedirs(data_dir, exist_ok=True)
@@ -181,14 +189,15 @@ def fetch_all_tweets(user_name: str):
     output_csv = os.path.join(data_dir, "tweets.csv")
 
     windows = generate_monthly_windows(START_DATE, END_DATE)
-    print(f"账号：{user_name}")
-    print(f"时间范围：{START_DATE.isoformat()} ~ {END_DATE.isoformat()}")
-    print(f"共拆分为 {len(windows)} 个月度窗口")
-    print(f"输出：{output_csv}\n")
+    print(f"Account: {user_name}")
+    print(f"Date range: {START_DATE.isoformat()} ~ {END_DATE.isoformat()}")
+    print(f"Split into {len(windows)} monthly windows")
+    print(f"Output: {output_csv}\n")
 
+    # Resume support
     seen_ids, covered_months = load_existing_ids(output_csv)
     if seen_ids:
-        print(f"发现已有数据：{len(seen_ids)} 条推文，覆盖月份：{sorted(covered_months)}")
+        print(f"Found existing data: {len(seen_ids)} tweets, months covered: {sorted(covered_months)}")
 
     total = len(seen_ids)
 
@@ -203,25 +212,25 @@ def fetch_all_tweets(user_name: str):
         for i, (since, until) in enumerate(windows, 1):
             window_month = since.strftime("%Y-%m")
             if window_month in covered_months:
-                print(f"[窗口 {i}/{len(windows)}] {since.isoformat()} ~ {until.isoformat()} → 已覆盖，跳过")
+                print(f"[Window {i}/{len(windows)}] {since.isoformat()} ~ {until.isoformat()} -> already covered, skipping")
                 continue
 
-            print(f"[窗口 {i}/{len(windows)}] {since.isoformat()} ~ {until.isoformat()}")
+            print(f"[Window {i}/{len(windows)}] {since.isoformat()} ~ {until.isoformat()}")
             window_count = fetch_window(writer, headers, user_name, since, until, seen_ids)
             f.flush()
             total += window_count
-            print(f"  → 本窗口 {window_count} 条，累计 {total} 条\n")
+            print(f"  -> This window: {window_count}, total: {total}\n")
 
             if i < len(windows):
                 time.sleep(5.2)
 
-    print(f"完成！总共 {total} 条 tweet 在 {output_csv}")
+    print(f"Done! {total} tweets saved to {output_csv}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("用法：python scripts/scrape.py <username>")
-        print("例如：python scripts/scrape.py usa912152217")
+        print("Usage: python scripts/scrape.py <username>")
+        print("Example: python scripts/scrape.py usa912152217")
         sys.exit(1)
 
     username = sys.argv[1]
