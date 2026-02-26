@@ -12,6 +12,7 @@ import matplotlib.dates as mdates
 import seaborn as sns
 import jieba
 from snownlp import SnowNLP
+from deep_translator import GoogleTranslator
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,8 +95,11 @@ def analyze_sentiment(df: pd.DataFrame, charts_dir: str):
 # ── 2. Keyword Frequency ─────────────────────────────────────────────────────
 
 def analyze_keywords(df: pd.DataFrame, charts_dir: str, data_dir: str):
-    print("\n── Keyword Frequency ──")
+    print("\n── Keyword Analysis ──")
 
+    total_tweets = len(df)
+
+    # First pass: get candidate keywords via jieba on all text
     all_text = df["text"].astype(str).str.cat(sep=" ")
     all_text = re.sub(r"http\S+", "", all_text)
     all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)
@@ -112,27 +116,57 @@ def analyze_keywords(df: pd.DataFrame, charts_dir: str, data_dir: str):
     ])
 
     words = [w for w in words if len(w) >= 2 and w not in stopwords]
-    counter = Counter(words)
-    top30 = counter.most_common(30)
+    # Get top 50 candidate keywords by raw frequency
+    candidates = [kw for kw, _ in Counter(words).most_common(50)]
 
-    # Save to CSV
-    kw_df = pd.DataFrame(top30, columns=["keyword", "count"])
+    # Second pass: count how many tweets contain each keyword
+    keyword_stats = []
+    for kw in candidates:
+        tweet_count = df["text"].astype(str).str.contains(kw, na=False).sum()
+        pct = tweet_count / total_tweets * 100
+        keyword_stats.append({"keyword": kw, "tweet_count": tweet_count, "pct_of_tweets": round(pct, 1)})
+
+    kw_df = pd.DataFrame(keyword_stats).sort_values("tweet_count", ascending=False).reset_index(drop=True)
+
+    # Translate keywords to English
+    print("  Translating keywords to English...")
+    translator = GoogleTranslator(source="zh-CN", target="en")
+    try:
+        all_kws = kw_df["keyword"].tolist()
+        # Batch translate by joining with newlines
+        translated = translator.translate("\n".join(all_kws)).split("\n")
+        if len(translated) == len(all_kws):
+            kw_df["english"] = translated
+        else:
+            kw_df["english"] = [translator.translate(kw) for kw in all_kws]
+    except Exception as e:
+        print(f"  Translation failed ({e}), falling back to one-by-one...")
+        kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
+
+    top30 = kw_df.head(30)
+
+    # Save to CSV (with English column)
     kw_df.to_csv(os.path.join(data_dir, "top_keywords.csv"), index=False)
 
-    # Bar chart
-    fig, ax = plt.subplots(figsize=(12, 7))
-    keywords = [k for k, _ in top30]
-    counts = [c for _, c in top30]
-    bars = ax.barh(range(len(top30)), counts[::-1], color="#4A90D9")
+    # Bar chart with English + percentage labels
+    fig, ax = plt.subplots(figsize=(14, 8))
+    labels = [f"{row['keyword']} ({row['english']})" for _, row in top30.iterrows()]
+    counts = top30["tweet_count"].tolist()
+    pcts = top30["pct_of_tweets"].tolist()
+    ax.barh(range(len(top30)), counts[::-1], color="#4A90D9")
     ax.set_yticks(range(len(top30)))
-    ax.set_yticklabels(keywords[::-1], fontsize=10)
-    ax.set_xlabel("Frequency")
-    ax.set_title("Top 30 Keywords")
+    ax.set_yticklabels(labels[::-1], fontsize=9)
+    ax.set_xlabel("Number of Tweets")
+    ax.set_title(f"Top 30 Keywords (out of {total_tweets} tweets)")
+    for i, (c, p) in enumerate(zip(counts[::-1], pcts[::-1])):
+        ax.text(c + max(counts) * 0.01, i, f"{p}%", va="center", fontsize=9, color="#555")
     plt.tight_layout()
     plt.savefig(os.path.join(charts_dir, "top_keywords.png"), dpi=150)
     plt.close()
 
-    print(f"  Top 10: {', '.join(f'{k}({c})' for k, c in top30[:10])}")
+    print(f"  Top 10 keywords (by tweet count):")
+    for _, row in top30.head(10).iterrows():
+        print(f"    {row['keyword']} ({row['english']}): {row['tweet_count']} tweets ({row['pct_of_tweets']}%)")
     print(f"  Saved top_keywords.png + top_keywords.csv")
 
 
