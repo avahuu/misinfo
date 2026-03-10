@@ -50,9 +50,13 @@ Data outputs are saved to `data/<username>/`.
 
 ## Scrape Methodology Notes
 
+### Date range and incomplete months
+
+The dataset covers **Feb 2024 – Jan 2026** (full months only). Partial months (e.g. Feb 2026) are dropped to avoid skewing monthly averages.
+
 ### Tweet types (`type` column)
 
-Each tweet is classified as `original`, `reply`, or `retweet`:
+Each tweet is classified as `original` or `reply`:
 
 - **Retweets** (`RT @...`): Detected by the `RT @username:` prefix that Twitter's API adds to retweet text. These are **excluded** from the final dataset because:
   - Their engagement metrics (views, likes, etc.) belong to the **original post**, not the retweeter
