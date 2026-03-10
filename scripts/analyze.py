@@ -5,13 +5,7 @@ from collections import Counter
 from datetime import datetime
 
 import pandas as pd
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
-import seaborn as sns
 import jieba
-from snownlp import SnowNLP
 from deep_translator import GoogleTranslator
 
 
@@ -49,53 +43,10 @@ def load_tweets(user_name: str) -> pd.DataFrame:
     return df
 
 
-# ── 1. Sentiment Analysis ────────────────────────────────────────────────────
+# ── 1. Keyword Frequency ─────────────────────────────────────────────────────
 
-def analyze_sentiment(df: pd.DataFrame, charts_dir: str):
-    print("\n── Sentiment Analysis ──")
-
-    def get_sentiment(text):
-        text = str(text).strip()
-        # Clean URLs and mentions
-        text = re.sub(r"http\S+", "", text)
-        text = re.sub(r"@\w+", "", text)
-        if not text:
-            return 0.5
-        try:
-            return SnowNLP(text).sentiments
-        except Exception:
-            return 0.5
-
-    df["sentiment"] = df["text"].apply(get_sentiment)
-
-    avg = df["sentiment"].mean()
-    print(f"  Overall average sentiment: {avg:.3f} (0=negative, 1=positive)")
-
-    # Monthly trend
-    monthly = df.groupby("month")["sentiment"].mean().sort_index()
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.plot(range(len(monthly)), monthly.values, marker="o", linewidth=2, color="#4A90D9")
-    ax.axhline(y=0.5, color="gray", linestyle="--", alpha=0.5, label="Neutral (0.5)")
-    ax.fill_between(range(len(monthly)), monthly.values, 0.5, alpha=0.15, color="#4A90D9")
-    ax.set_xticks(range(len(monthly)))
-    ax.set_xticklabels(monthly.index, rotation=45, ha="right", fontsize=9)
-    ax.set_ylabel("Avg Sentiment Score")
-    ax.set_title("Monthly Sentiment Trend")
-    ax.legend()
-    ax.set_ylim(0, 1)
-    plt.tight_layout()
-    plt.savefig(os.path.join(charts_dir, "sentiment_trend.png"), dpi=150)
-    plt.close()
-    print(f"  Saved sentiment_trend.png")
-
-    return df
-
-
-# ── 2. Keyword Frequency ─────────────────────────────────────────────────────
-
-def analyze_keywords(df: pd.DataFrame, charts_dir: str, data_dir: str):
-    print("\n── Keyword Analysis ──")
+def analyze_keywords(df: pd.DataFrame, data_dir: str):
+    print("\n── 1. Keyword Frequency ──")
 
     total_tweets = len(df)
 
@@ -143,144 +94,57 @@ def analyze_keywords(df: pd.DataFrame, charts_dir: str, data_dir: str):
         print(f"  Translation failed ({e}), falling back to one-by-one...")
         kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
 
-    top30 = kw_df.head(30)
-
-    # Save to CSV (with English column)
-    kw_df.to_csv(os.path.join(data_dir, "top_keywords.csv"), index=False)
-
-    # Bar chart with English + percentage labels
-    fig, ax = plt.subplots(figsize=(14, 8))
-    labels = [f"{row['keyword']} ({row['english']})" for _, row in top30.iterrows()]
-    counts = top30["tweet_count"].tolist()
-    pcts = top30["pct_of_tweets"].tolist()
-    ax.barh(range(len(top30)), counts[::-1], color="#4A90D9")
-    ax.set_yticks(range(len(top30)))
-    ax.set_yticklabels(labels[::-1], fontsize=9)
-    ax.set_xlabel("Number of Tweets")
-    ax.set_title(f"Top 30 Keywords (out of {total_tweets} tweets)")
-    for i, (c, p) in enumerate(zip(counts[::-1], pcts[::-1])):
-        ax.text(c + max(counts) * 0.01, i, f"{p}%", va="center", fontsize=9, color="#555")
-    plt.tight_layout()
-    plt.savefig(os.path.join(charts_dir, "top_keywords.png"), dpi=150)
-    plt.close()
+    # Export
+    kw_csv = os.path.join(data_dir, "top_keywords.csv")
+    kw_df.to_csv(kw_csv, index=False, encoding="utf-8-sig")
 
     print(f"  Top 10 keywords (by tweet count):")
-    for _, row in top30.head(10).iterrows():
+    for _, row in kw_df.head(10).iterrows():
         print(f"    {row['keyword']} ({row['english']}): {row['tweet_count']} tweets ({row['pct_of_tweets']}%)")
-    print(f"  Saved top_keywords.png + top_keywords.csv")
+    print(f"  Saved {kw_csv}")
 
 
-# ── 3. Engagement Metrics ────────────────────────────────────────────────────
+# ── 2. Posting Frequency ─────────────────────────────────────────────────────
 
-def analyze_engagement(df: pd.DataFrame, charts_dir: str, data_dir: str):
-    print("\n── Engagement Metrics ──")
+def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
+    print("\n── 2. Posting Frequency ──")
 
-    metrics = ["viewCount", "likeCount", "retweetCount", "replyCount", "quoteCount", "bookmarkCount"]
-    labels = ["Views", "Likes", "Retweets", "Replies", "Quotes", "Bookmarks"]
+    # --- Monthly posting counts ---
+    monthly_counts = df.groupby("month").size().reset_index(name="tweet_count").sort_values("month")
+    monthly_csv = os.path.join(data_dir, "monthly_posting.csv")
+    monthly_counts.to_csv(monthly_csv, index=False, encoding="utf-8-sig")
 
-    # Summary stats
-    stats = {}
-    for m, l in zip(metrics, labels):
-        stats[l] = {
-            "mean": df[m].mean(),
-            "median": df[m].median(),
-            "max": df[m].max(),
-            "total": df[m].sum(),
-        }
-        print(f"  {l}: mean={stats[l]['mean']:.0f}, median={stats[l]['median']:.0f}, max={stats[l]['max']}")
+    print(f"  Total tweets: {len(df)}")
+    print(f"  Months covered: {len(monthly_counts)}")
+    print(f"  Avg per month: {len(df) / max(len(monthly_counts), 1):.0f}")
+    most_active = monthly_counts.loc[monthly_counts["tweet_count"].idxmax()]
+    print(f"  Most active month: {most_active['month']} ({most_active['tweet_count']} tweets)")
+    print(f"  Saved {monthly_csv}")
 
-    stats_df = pd.DataFrame(stats).T
-    stats_df.to_csv(os.path.join(data_dir, "engagement_stats.csv"))
-
-    # Top 10 most-engaged tweets
-    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
-    top10 = df.nlargest(10, "total_engagement")[["createdAt", "text", "viewCount", "likeCount", "retweetCount", "replyCount", "total_engagement"]]
-    top10["text"] = top10["text"].str[:100]  # Truncate for readability
-    top10.to_csv(os.path.join(data_dir, "top_tweets.csv"), index=False, encoding="utf-8-sig")
-
-    # Monthly engagement trend
-    monthly = df.groupby("month")[["viewCount", "likeCount", "retweetCount"]].mean().sort_index()
-
-    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=True)
-    colors = ["#4A90D9", "#E8534A", "#F5A623"]
-    for ax, col, label, color in zip(axes, ["viewCount", "likeCount", "retweetCount"], ["Avg Views", "Avg Likes", "Avg Retweets"], colors):
-        ax.plot(range(len(monthly)), monthly[col].values, marker="o", linewidth=2, color=color)
-        ax.fill_between(range(len(monthly)), monthly[col].values, alpha=0.15, color=color)
-        ax.set_ylabel(label)
-        ax.grid(alpha=0.3)
-
-    axes[-1].set_xticks(range(len(monthly)))
-    axes[-1].set_xticklabels(monthly.index, rotation=45, ha="right", fontsize=9)
-    axes[0].set_title("Monthly Engagement Trend")
-    plt.tight_layout()
-    plt.savefig(os.path.join(charts_dir, "engagement_trend.png"), dpi=150)
-    plt.close()
-    print(f"  Saved engagement_trend.png + engagement_stats.csv + top_tweets.csv")
-
-
-# ── 4. Posting Patterns ──────────────────────────────────────────────────────
-
-def analyze_posting_patterns(df: pd.DataFrame, charts_dir: str):
-    print("\n── Posting Patterns ──")
-
-    # Monthly tweet count
-    monthly_counts = df.groupby("month").size().sort_index()
-
-    fig, ax = plt.subplots(figsize=(12, 5))
-    ax.bar(range(len(monthly_counts)), monthly_counts.values, color="#4A90D9", alpha=0.8)
-    ax.set_xticks(range(len(monthly_counts)))
-    ax.set_xticklabels(monthly_counts.index, rotation=45, ha="right", fontsize=9)
-    ax.set_ylabel("Number of Tweets")
-    ax.set_title("Posting Frequency Over Time")
-    for i, v in enumerate(monthly_counts.values):
-        ax.text(i, v + 2, str(v), ha="center", fontsize=8, color="#333")
-    plt.tight_layout()
-    plt.savefig(os.path.join(charts_dir, "posting_frequency.png"), dpi=150)
-    plt.close()
-
-    # Day-of-week × hour heatmap
+    # --- Day-of-week × hour heatmap data ---
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     heatmap_data = df.groupby(["weekday", "hour"]).size().unstack(fill_value=0)
     # Fill missing hours/days
     heatmap_data = heatmap_data.reindex(index=range(7), columns=range(24), fill_value=0)
+    heatmap_data.index = day_labels
+    heatmap_data.columns = [f"{h}:00" for h in range(24)]
 
-    fig, ax = plt.subplots(figsize=(14, 5))
-    sns.heatmap(heatmap_data, cmap="YlOrRd", ax=ax, linewidths=0.5,
-                xticklabels=[f"{h}:00" for h in range(24)],
-                yticklabels=day_labels)
-    ax.set_xlabel("Hour (UTC)")
-    ax.set_ylabel("Day of Week")
-    ax.set_title("Posting Activity Heatmap")
-    plt.tight_layout()
-    plt.savefig(os.path.join(charts_dir, "activity_heatmap.png"), dpi=150)
-    plt.close()
-
-    print(f"  Total tweets: {len(df)}")
-    print(f"  Avg per month: {len(df) / max(len(monthly_counts), 1):.0f}")
-    print(f"  Most active month: {monthly_counts.idxmax()} ({monthly_counts.max()} tweets)")
-    print(f"  Saved posting_frequency.png + activity_heatmap.png")
+    heatmap_csv = os.path.join(data_dir, "activity_heatmap.csv")
+    heatmap_data.to_csv(heatmap_csv, encoding="utf-8-sig")
+    print(f"  Saved {heatmap_csv}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def run_analysis(user_name: str):
     data_dir = get_data_dir(user_name)
-    charts_dir = os.path.join(data_dir, "charts")
-    os.makedirs(charts_dir, exist_ok=True)
+    os.makedirs(data_dir, exist_ok=True)
 
     df = load_tweets(user_name)
 
-    df = analyze_sentiment(df, charts_dir)
-    analyze_keywords(df, charts_dir, data_dir)
-    analyze_engagement(df, charts_dir, data_dir)
-    analyze_posting_patterns(df, charts_dir)
+    analyze_keywords(df, data_dir)
+    analyze_posting_frequency(df, data_dir)
 
-    # Save full data with sentiment scores
-    sentiment_csv = os.path.join(data_dir, "tweets_with_sentiment.csv")
-    df[["id", "createdAt", "text", "sentiment", "viewCount", "likeCount",
-        "retweetCount", "replyCount", "quoteCount", "bookmarkCount"]].to_csv(
-        sentiment_csv, index=False, encoding="utf-8-sig"
-    )
     print(f"\nAll analysis complete! Outputs in {data_dir}/")
 
 
@@ -289,9 +153,5 @@ if __name__ == "__main__":
         print("Usage: python scripts/analyze.py <username>")
         print("Example: python scripts/analyze.py usa912152217")
         sys.exit(1)
-
-    # Set font for Chinese characters
-    plt.rcParams["font.sans-serif"] = ["Arial Unicode MS", "SimHei", "DejaVu Sans"]
-    plt.rcParams["axes.unicode_minus"] = False
 
     run_analysis(sys.argv[1])
