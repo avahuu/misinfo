@@ -113,24 +113,19 @@ def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
     monthly_counts = df.groupby("month").size().reset_index(name="tweet_count").sort_values("month")
     monthly_csv = os.path.join(data_dir, "monthly_posting.csv")
     monthly_counts.to_csv(monthly_csv, index=False, encoding="utf-8-sig")
-
     print(f"  Total tweets: {len(df)}")
-    print(f"  Months covered: {len(monthly_counts)}")
     print(f"  Avg per month: {len(df) / max(len(monthly_counts), 1):.0f}")
-    most_active = monthly_counts.loc[monthly_counts["tweet_count"].idxmax()]
-    print(f"  Most active month: {most_active['month']} ({most_active['tweet_count']} tweets)")
     print(f"  Saved {monthly_csv}")
 
-    # --- Day-of-week × hour heatmap data ---
+    # --- Weekday × month heatmap ---
     day_labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-    heatmap_data = df.groupby(["weekday", "hour"]).size().unstack(fill_value=0)
-    # Fill missing hours/days
-    heatmap_data = heatmap_data.reindex(index=range(7), columns=range(24), fill_value=0)
-    heatmap_data.index = day_labels
-    heatmap_data.columns = [f"{h}:00" for h in range(24)]
+    months_sorted = sorted(df["month"].unique())
+    heatmap = df.groupby(["weekday", "month"]).size().unstack(fill_value=0)
+    heatmap = heatmap.reindex(index=range(7), columns=months_sorted, fill_value=0)
+    heatmap.index = day_labels
 
-    heatmap_csv = os.path.join(data_dir, "activity_heatmap.csv")
-    heatmap_data.to_csv(heatmap_csv, encoding="utf-8-sig")
+    heatmap_csv = os.path.join(data_dir, "weekday_month_heatmap.csv")
+    heatmap.to_csv(heatmap_csv, encoding="utf-8-sig")
     print(f"  Saved {heatmap_csv}")
 
 
@@ -154,12 +149,84 @@ def analyze_engagement(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {engagement_csv}")
 
 
+# ── 4. Posting Behavior ──────────────────────────────────────────────────────
+
+def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
+    print("\n── 4. Posting Behavior ──")
+
+    df = df.copy()
+    df["dt"] = pd.to_datetime(df["datetime"])
+    df = df.sort_values("dt")
+
+    # --- Daily posting volume (with inactive days filled as 0) ---
+    active_daily = df.groupby(df["dt"].dt.date).agg(
+        tweet_count=("id", "size"),
+        original_count=("type", lambda x: (x == "original").sum()),
+        reply_count=("type", lambda x: (x == "reply").sum()),
+    ).reset_index()
+    active_daily.columns = ["date", "tweet_count", "original_count", "reply_count"]
+
+    # Fill all dates in range (including inactive days with 0)
+    all_dates = pd.date_range(df["dt"].min().date(), df["dt"].max().date(), freq="D")
+    full_daily = pd.DataFrame({"date": all_dates.date})
+    full_daily = full_daily.merge(active_daily, on="date", how="left").fillna(0)
+    for col in ["tweet_count", "original_count", "reply_count"]:
+        full_daily[col] = full_daily[col].astype(int)
+
+    daily_csv = os.path.join(data_dir, "daily_posting.csv")
+    full_daily.to_csv(daily_csv, index=False, encoding="utf-8-sig")
+
+    total_days = len(full_daily)
+    active_days = (full_daily["tweet_count"] > 0).sum()
+    inactive_days = total_days - active_days
+    print(f"  Total days: {total_days}, active: {active_days} ({active_days/total_days*100:.1f}%), inactive: {inactive_days}")
+    print(f"  Tweets per active day: mean={full_daily[full_daily['tweet_count']>0]['tweet_count'].mean():.1f}, max={full_daily['tweet_count'].max()}")
+    print(f"  Saved {daily_csv}")
+
+    # --- Time gap distribution (15 buckets) ---
+    gaps_sec = df["dt"].diff().dt.total_seconds().dropna()
+
+    buckets = [
+        (0, 30, "0-30s"),
+        (30, 60, "30s-1min"),
+        (60, 120, "1-2min"),
+        (120, 300, "2-5min"),
+        (300, 600, "5-10min"),
+        (600, 900, "10-15min"),
+        (900, 1800, "15-30min"),
+        (1800, 3600, "30min-1hr"),
+        (3600, 7200, "1-2hr"),
+        (7200, 14400, "2-4hr"),
+        (14400, 28800, "4-8hr"),
+        (28800, 43200, "8-12hr"),
+        (43200, 86400, "12-24hr"),
+        (86400, 259200, "1-3 days"),
+        (259200, float("inf"), "3+ days"),
+    ]
+
+    dist_rows = []
+    for lo, hi, label in buckets:
+        count = ((gaps_sec >= lo) & (gaps_sec < hi)).sum()
+        pct = count / len(gaps_sec) * 100
+        dist_rows.append({"gap_range": label, "count": count, "pct": round(pct, 1)})
+
+    dist_df = pd.DataFrame(dist_rows)
+    dist_csv = os.path.join(data_dir, "time_gap_distribution.csv")
+    dist_df.to_csv(dist_csv, index=False, encoding="utf-8-sig")
+
+    print(f"  Median gap: {gaps_sec.median()/60:.1f} min")
+    rapid = (gaps_sec < 60).sum()
+    print(f"  Rapid-fire (<1 min): {rapid} ({rapid/len(gaps_sec)*100:.1f}%)")
+    print(f"  Saved {dist_csv}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 ANALYSES = {
     "keywords": analyze_keywords,
     "posting": analyze_posting_frequency,
     "engagement": analyze_engagement,
+    "behavior": analyze_posting_behavior,
 }
 
 
