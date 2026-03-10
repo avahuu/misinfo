@@ -95,7 +95,7 @@ def analyze_keywords(df: pd.DataFrame, data_dir: str):
         kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
 
     # Export
-    kw_csv = os.path.join(data_dir, "top_keywords.csv")
+    kw_csv = os.path.join(data_dir, "post", "top_keywords.csv")
     kw_df.to_csv(kw_csv, index=False, encoding="utf-8-sig")
 
     print(f"  Top 10 keywords (by tweet count):")
@@ -109,9 +109,11 @@ def analyze_keywords(df: pd.DataFrame, data_dir: str):
 def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
     print("\n── 2. Posting Frequency ──")
 
+    tl = os.path.join(data_dir, "timeline")
+
     # --- Monthly posting counts ---
     monthly_counts = df.groupby("month").size().reset_index(name="tweet_count").sort_values("month")
-    monthly_csv = os.path.join(data_dir, "monthly_posting.csv")
+    monthly_csv = os.path.join(tl, "monthly_posting.csv")
     monthly_counts.to_csv(monthly_csv, index=False, encoding="utf-8-sig")
     print(f"  Total tweets: {len(df)}")
     print(f"  Avg per month: {len(df) / max(len(monthly_counts), 1):.0f}")
@@ -124,7 +126,7 @@ def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
     heatmap = heatmap.reindex(index=range(7), columns=months_sorted, fill_value=0)
     heatmap.index = day_labels
 
-    heatmap_csv = os.path.join(data_dir, "weekday_month_heatmap.csv")
+    heatmap_csv = os.path.join(tl, "weekday_month_heatmap.csv")
     heatmap.to_csv(heatmap_csv, encoding="utf-8-sig")
     print(f"  Saved {heatmap_csv}")
 
@@ -140,7 +142,7 @@ def analyze_engagement(df: pd.DataFrame, data_dir: str):
     monthly = df.groupby("month")[metrics].mean().sort_index().round(1)
     monthly.columns = ["avg_views", "avg_likes", "avg_retweets", "avg_replies", "avg_quotes", "avg_bookmarks", "avg_total_engagement"]
 
-    engagement_csv = os.path.join(data_dir, "monthly_engagement.csv")
+    engagement_csv = os.path.join(data_dir, "timeline", "monthly_engagement.csv")
     monthly.to_csv(engagement_csv, encoding="utf-8-sig")
 
     print(f"  Monthly engagement averages:")
@@ -157,6 +159,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     df = df.copy()
     df["dt"] = pd.to_datetime(df["datetime"])
     df = df.sort_values("dt")
+    tl = os.path.join(data_dir, "timeline")
 
     # --- Daily posting volume (with inactive days filled as 0) ---
     active_daily = df.groupby(df["dt"].dt.date).agg(
@@ -173,7 +176,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     for col in ["tweet_count", "original_count", "reply_count"]:
         full_daily[col] = full_daily[col].astype(int)
 
-    daily_csv = os.path.join(data_dir, "daily_posting.csv")
+    daily_csv = os.path.join(tl, "daily_posting.csv")
     full_daily.to_csv(daily_csv, index=False, encoding="utf-8-sig")
 
     total_days = len(full_daily)
@@ -213,7 +216,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
         dist_rows.append({"gap_range": label, "count": count, "pct": round(pct, 1)})
 
     dist_df = pd.DataFrame(dist_rows)
-    dist_csv = os.path.join(data_dir, "time_gap_distribution.csv")
+    dist_csv = os.path.join(tl, "time_gap_distribution.csv")
     dist_df.to_csv(dist_csv, index=False, encoding="utf-8-sig")
 
     print(f"  Median gap: {gaps_sec.median()/60:.1f} min")
@@ -260,7 +263,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
         })
 
     burst_df = pd.DataFrame(burst_rows)
-    burst_csv = os.path.join(data_dir, "burst_sessions.csv")
+    burst_csv = os.path.join(tl, "burst_sessions.csv")
     burst_df.to_csv(burst_csv, index=False, encoding="utf-8-sig")
 
     # Summary stats
@@ -273,7 +276,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
         "avg_burst_duration_min": round(burst_df["duration_min"].mean(), 1) if len(burst_df) else 0,
     }
     summary_df = pd.DataFrame([summary])
-    summary_csv = os.path.join(data_dir, "burst_summary.csv")
+    summary_csv = os.path.join(tl, "burst_summary.csv")
     summary_df.to_csv(summary_csv, index=False, encoding="utf-8-sig")
 
     print(f"  Burst sessions (3+ tweets within 5 min gaps):")
@@ -295,7 +298,8 @@ ANALYSES = {
 
 def run_analysis(user_name: str, only: str | None = None):
     data_dir = get_data_dir(user_name)
-    os.makedirs(data_dir, exist_ok=True)
+    for sub in ["", "post", "timeline", "charts"]:
+        os.makedirs(os.path.join(data_dir, sub), exist_ok=True)
 
     df = load_tweets(user_name)
 

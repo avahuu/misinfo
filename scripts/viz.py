@@ -20,7 +20,7 @@ def get_data_dir(user_name: str) -> str:
 
 def viz_heatmap(user_name: str):
     data_dir = get_data_dir(user_name)
-    csv_path = os.path.join(data_dir, "weekday_month_heatmap.csv")
+    csv_path = os.path.join(data_dir, "timeline", "weekday_month_heatmap.csv")
 
     if not os.path.exists(csv_path):
         print(f"Error: {csv_path} not found. Run analyze.py --only posting first.")
@@ -44,7 +44,7 @@ def viz_heatmap(user_name: str):
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha="right", fontsize=9)
     plt.tight_layout()
 
-    out_path = os.path.join(data_dir, "weekday_month_heatmap.png")
+    out_path = os.path.join(data_dir, "charts", "weekday_month_heatmap.png")
     plt.savefig(out_path, dpi=150)
     plt.close()
     print(f"Saved {out_path}")
@@ -55,7 +55,7 @@ def viz_heatmap(user_name: str):
 def viz_burst_timeline(user_name: str):
     data_dir = get_data_dir(user_name)
     tweets_path = os.path.join(data_dir, "tweets.csv")
-    bursts_path = os.path.join(data_dir, "burst_sessions.csv")
+    bursts_path = os.path.join(data_dir, "timeline", "burst_sessions.csv")
 
     if not os.path.exists(tweets_path):
         print(f"Error: {tweets_path} not found.")
@@ -109,7 +109,7 @@ def viz_burst_timeline(user_name: str):
     plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
 
-    out_path = os.path.join(data_dir, "burst_timeline.png")
+    out_path = os.path.join(data_dir, "charts", "burst_timeline.png")
     plt.savefig(out_path, dpi=150)
     plt.close()
     print(f"Saved {out_path}")
