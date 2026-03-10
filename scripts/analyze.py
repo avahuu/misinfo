@@ -6,6 +6,7 @@ from datetime import datetime
 
 import pandas as pd
 import jieba
+from snownlp import SnowNLP
 from deep_translator import GoogleTranslator
 
 
@@ -286,6 +287,111 @@ def analyze_keywords(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {kw_csv}")
 
 
+# ── 5. Sentiment Analysis ────────────────────────────────────────────────────
+
+LEADERS = {
+    "Trump": ["川普", "特朗普", "Trump"],
+    "Biden": ["拜登", "Biden"],
+    "Xi Jinping": ["习近平", "习"],
+    "Putin": ["普京", "Putin"],
+    "Epstein": ["爱泼斯坦", "Epstein"],
+    "Elon Musk": ["马斯克", "Musk"],
+    "AOC": ["AOC"],
+    "Zelensky": ["泽连斯基", "Zelensky"],
+    "Kamala Harris": ["哈里斯", "贺锦丽", "Kamala", "Harris", "贺哈哈", "哈三笑", "哈大嘴", "风尘三笑"],
+}
+
+TOPICS = {
+    "Immigration": ["移民"],
+    "Election": ["选举", "大选"],
+    "Ukraine": ["乌克兰"],
+    "Russia": ["俄罗斯", "俄国"],
+    "China": ["中国"],
+    "Media": ["媒体"],
+    "Safety": ["安全"],
+    "Female": ["女性", "女人"],
+    "Male": ["男性", "男人"],
+    "LGBTQ": ["LGBT", "同性"],
+    "California": ["加州", "加利福尼亚"],
+    "Black": ["黑人"],
+}
+
+
+def _get_sentiment(text: str) -> float:
+    """Score sentiment 0 (negative) to 1 (positive) using SnowNLP."""
+    text = str(text).strip()
+    text = re.sub(r"http\S+", "", text)
+    text = re.sub(r"@\w+", "", text)
+    if not text:
+        return 0.5
+    try:
+        return SnowNLP(text).sentiments
+    except Exception:
+        return 0.5
+
+
+def _score_entities(df: pd.DataFrame, entities: dict) -> pd.DataFrame:
+    """For each entity, filter matching tweets and compute sentiment stats."""
+    results = []
+    for name, search_terms in entities.items():
+        pattern = "|".join(re.escape(t) for t in search_terms)
+        mask = df["text"].astype(str).str.contains(pattern, case=False, na=False)
+        matched = df[mask]
+
+        if len(matched) == 0:
+            results.append({
+                "entity": name,
+                "search_terms": ", ".join(search_terms),
+                "tweet_count": 0,
+                "avg_sentiment": None,
+                "median_sentiment": None,
+                "positive_count": 0,
+                "negative_count": 0,
+                "neutral_count": 0,
+            })
+            continue
+
+        sentiments = matched["text"].apply(_get_sentiment)
+        results.append({
+            "entity": name,
+            "search_terms": ", ".join(search_terms),
+            "tweet_count": len(matched),
+            "avg_sentiment": round(sentiments.mean(), 3),
+            "median_sentiment": round(sentiments.median(), 3),
+            "positive_count": (sentiments > 0.6).sum(),
+            "negative_count": (sentiments < 0.4).sum(),
+            "neutral_count": ((sentiments >= 0.4) & (sentiments <= 0.6)).sum(),
+        })
+
+    return pd.DataFrame(results)
+
+
+def analyze_sentiment(df: pd.DataFrame, data_dir: str):
+    print("\n── 5. Sentiment Analysis ──")
+
+    sent_dir = os.path.join(data_dir, "sentiment")
+
+    # Leaders
+    print("  Scoring leaders...")
+    leaders_df = _score_entities(df, LEADERS)
+    leaders_csv = os.path.join(sent_dir, "leader_sentiment.csv")
+    leaders_df.to_csv(leaders_csv, index=False, encoding="utf-8-sig")
+    for _, row in leaders_df.iterrows():
+        if row["tweet_count"] > 0:
+            print(f"    {row['entity']}: {row['tweet_count']} tweets, avg={row['avg_sentiment']:.3f}")
+    print(f"  Saved {leaders_csv}")
+
+    # Topics
+    print("  Scoring topics...")
+    topics_df = _score_entities(df, TOPICS)
+    topics_csv = os.path.join(sent_dir, "topic_sentiment.csv")
+    topics_df.to_csv(topics_csv, index=False, encoding="utf-8-sig")
+    for _, row in topics_df.iterrows():
+        if row["tweet_count"] > 0:
+            print(f"    {row['entity']}: {row['tweet_count']} tweets, avg={row['avg_sentiment']:.3f}")
+    print(f"  Saved {topics_csv}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 ANALYSES = {
@@ -293,12 +399,13 @@ ANALYSES = {
     "behavior": analyze_posting_behavior,
     "engagement": analyze_engagement,
     "keywords": analyze_keywords,
+    "sentiment": analyze_sentiment,
 }
 
 
 def run_analysis(user_name: str, only: str | None = None):
     data_dir = get_data_dir(user_name)
-    for sub in ["", "post", "timeline", "engagement", "charts"]:
+    for sub in ["", "post", "timeline", "engagement", "sentiment", "charts"]:
         os.makedirs(os.path.join(data_dir, sub), exist_ok=True)
 
     df = load_tweets(user_name)
