@@ -25,6 +25,8 @@ FIELDS = [
     "createdAt",
     "datetime",
     "type",
+    "isReply",
+    "inReplyToUsername",
     "text",
     "retweetCount",
     "replyCount",
@@ -125,18 +127,30 @@ def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
 
             created_at = tw.get("createdAt", "")
             text = tw.get("text", "")
+
+            # Skip retweets — their engagement belongs to the original post
+            if str(text).startswith("RT @"):
+                continue
+
             # ISO datetime for easy sorting in spreadsheets
             try:
                 iso_dt = datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y").strftime("%Y-%m-%d %H:%M:%S")
             except Exception:
                 iso_dt = ""
-            tweet_type = "retweet" if str(text).startswith("RT @") else "original"
+            is_reply = tw.get("isReply", False)
+            reply_to = tw.get("inReplyToUsername", "")
+            if is_reply:
+                tweet_type = "reply"
+            else:
+                tweet_type = "original"
 
             row = {
                 "id": tweet_id,
                 "createdAt": created_at,
                 "datetime": iso_dt,
                 "type": tweet_type,
+                "isReply": is_reply,
+                "inReplyToUsername": reply_to,
                 "text": text,
                 "retweetCount": tw.get("retweetCount"),
                 "replyCount": tw.get("replyCount"),
