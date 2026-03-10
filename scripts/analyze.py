@@ -187,7 +187,9 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     gaps_sec = df["dt"].diff().dt.total_seconds().dropna()
 
     buckets = [
-        (0, 30, "0-30s"),
+        (0, 10, "0-10s"),
+        (10, 20, "10-20s"),
+        (20, 30, "20-30s"),
         (30, 60, "30s-1min"),
         (60, 120, "1-2min"),
         (120, 300, "2-5min"),
@@ -218,6 +220,67 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     rapid = (gaps_sec < 60).sum()
     print(f"  Rapid-fire (<1 min): {rapid} ({rapid/len(gaps_sec)*100:.1f}%)")
     print(f"  Saved {dist_csv}")
+
+    # --- Burst session detection ---
+    # A burst = consecutive tweets with <5 min gaps; keep sessions with 3+ tweets
+    BURST_GAP = 300  # 5 minutes
+    MIN_BURST_SIZE = 3
+
+    df = df.reset_index(drop=True)
+    df["gap_sec"] = df["dt"].diff().dt.total_seconds()
+
+    # Assign session IDs: new session starts when gap >= BURST_GAP
+    session_id = 0
+    sessions = []
+    for i in range(len(df)):
+        if i == 0 or df.loc[i, "gap_sec"] >= BURST_GAP:
+            session_id += 1
+        sessions.append(session_id)
+    df["session_id"] = sessions
+
+    # Aggregate per session
+    burst_rows = []
+    for sid, group in df.groupby("session_id"):
+        if len(group) < MIN_BURST_SIZE:
+            continue
+        start = group["dt"].min()
+        end = group["dt"].max()
+        duration_sec = (end - start).total_seconds()
+        avg_gap = duration_sec / (len(group) - 1) if len(group) > 1 else 0
+        texts = group["text"].str[:60].tolist()
+
+        burst_rows.append({
+            "date": start.strftime("%Y-%m-%d"),
+            "start_time": start.strftime("%H:%M:%S"),
+            "end_time": end.strftime("%H:%M:%S"),
+            "duration_min": round(duration_sec / 60, 1),
+            "tweet_count": len(group),
+            "avg_gap_sec": round(avg_gap, 1),
+            "text_samples": " | ".join(texts[:5]),
+        })
+
+    burst_df = pd.DataFrame(burst_rows)
+    burst_csv = os.path.join(data_dir, "burst_sessions.csv")
+    burst_df.to_csv(burst_csv, index=False, encoding="utf-8-sig")
+
+    # Summary stats
+    summary = {
+        "total_bursts": len(burst_df),
+        "total_tweets_in_bursts": burst_df["tweet_count"].sum() if len(burst_df) else 0,
+        "pct_tweets_in_bursts": round(burst_df["tweet_count"].sum() / len(df) * 100, 1) if len(burst_df) else 0,
+        "avg_burst_size": round(burst_df["tweet_count"].mean(), 1) if len(burst_df) else 0,
+        "max_burst_size": burst_df["tweet_count"].max() if len(burst_df) else 0,
+        "avg_burst_duration_min": round(burst_df["duration_min"].mean(), 1) if len(burst_df) else 0,
+    }
+    summary_df = pd.DataFrame([summary])
+    summary_csv = os.path.join(data_dir, "burst_summary.csv")
+    summary_df.to_csv(summary_csv, index=False, encoding="utf-8-sig")
+
+    print(f"  Burst sessions (3+ tweets within 5 min gaps):")
+    print(f"    Total bursts: {summary['total_bursts']}")
+    print(f"    Tweets in bursts: {summary['total_tweets_in_bursts']} ({summary['pct_tweets_in_bursts']}% of all tweets)")
+    print(f"    Avg burst size: {summary['avg_burst_size']} tweets, max: {summary['max_burst_size']}")
+    print(f"  Saved {burst_csv} + {summary_csv}")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
