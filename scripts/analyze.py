@@ -134,24 +134,64 @@ def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {heatmap_csv}")
 
 
+# ── 3. Engagement Trends ─────────────────────────────────────────────────────
+
+def analyze_engagement(df: pd.DataFrame, data_dir: str):
+    print("\n── 3. Engagement Trends ──")
+
+    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
+
+    metrics = ["viewCount", "likeCount", "retweetCount", "replyCount", "quoteCount", "bookmarkCount", "total_engagement"]
+    monthly = df.groupby("month")[metrics].mean().sort_index().round(1)
+    monthly.columns = ["avg_views", "avg_likes", "avg_retweets", "avg_replies", "avg_quotes", "avg_bookmarks", "avg_total_engagement"]
+
+    engagement_csv = os.path.join(data_dir, "monthly_engagement.csv")
+    monthly.to_csv(engagement_csv, encoding="utf-8-sig")
+
+    print(f"  Monthly engagement averages:")
+    for _, row in monthly.iterrows():
+        print(f"    {row.name}: views={row['avg_views']:.0f}, likes={row['avg_likes']:.0f}, engagement={row['avg_total_engagement']:.0f}")
+    print(f"  Saved {engagement_csv}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run_analysis(user_name: str):
+ANALYSES = {
+    "keywords": analyze_keywords,
+    "posting": analyze_posting_frequency,
+    "engagement": analyze_engagement,
+}
+
+
+def run_analysis(user_name: str, only: str | None = None):
     data_dir = get_data_dir(user_name)
     os.makedirs(data_dir, exist_ok=True)
 
     df = load_tweets(user_name)
 
-    analyze_keywords(df, data_dir)
-    analyze_posting_frequency(df, data_dir)
+    if only:
+        if only not in ANALYSES:
+            print(f"Error: unknown analysis '{only}'. Choose from: {', '.join(ANALYSES)}")
+            sys.exit(1)
+        ANALYSES[only](df, data_dir)
+    else:
+        for fn in ANALYSES.values():
+            fn(df, data_dir)
 
-    print(f"\nAll analysis complete! Outputs in {data_dir}/")
+    print(f"\nDone! Outputs in {data_dir}/")
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python scripts/analyze.py <username>")
-        print("Example: python scripts/analyze.py usa912152217")
+        print("Usage: python scripts/analyze.py <username> [--only keywords|posting|engagement]")
+        print("Example: python scripts/analyze.py usa912152217 --only engagement")
         sys.exit(1)
 
-    run_analysis(sys.argv[1])
+    user = sys.argv[1]
+    only = None
+    if "--only" in sys.argv:
+        idx = sys.argv.index("--only")
+        if idx + 1 < len(sys.argv):
+            only = sys.argv[idx + 1]
+
+    run_analysis(user, only)

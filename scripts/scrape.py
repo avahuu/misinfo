@@ -23,6 +23,8 @@ START_DATE = date(2024, 2, 24)
 FIELDS = [
     "id",
     "createdAt",
+    "datetime",
+    "type",
     "text",
     "retweetCount",
     "replyCount",
@@ -121,10 +123,21 @@ def fetch_window(writer, headers, user_name, since_date, until_date, seen_ids):
                 continue
             seen_ids.add(tweet_id)
 
+            created_at = tw.get("createdAt", "")
+            text = tw.get("text", "")
+            # ISO datetime for easy sorting in spreadsheets
+            try:
+                iso_dt = datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y").strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                iso_dt = ""
+            tweet_type = "retweet" if str(text).startswith("RT @") else "original"
+
             row = {
                 "id": tweet_id,
-                "createdAt": tw.get("createdAt"),
-                "text": tw.get("text"),
+                "createdAt": created_at,
+                "datetime": iso_dt,
+                "type": tweet_type,
+                "text": text,
                 "retweetCount": tw.get("retweetCount"),
                 "replyCount": tw.get("replyCount"),
                 "likeCount": tw.get("likeCount"),
