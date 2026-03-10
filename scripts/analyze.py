@@ -43,71 +43,10 @@ def load_tweets(user_name: str) -> pd.DataFrame:
     return df
 
 
-# ── 1. Keyword Frequency ─────────────────────────────────────────────────────
-
-def analyze_keywords(df: pd.DataFrame, data_dir: str):
-    print("\n── 1. Keyword Frequency ──")
-
-    total_tweets = len(df)
-
-    # First pass: get candidate keywords via jieba on all text
-    all_text = df["text"].astype(str).str.cat(sep=" ")
-    all_text = re.sub(r"http\S+", "", all_text)
-    all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)
-    all_text = re.sub(r"[^\u4e00-\u9fa5]", " ", all_text)
-
-    words = jieba.lcut(all_text)
-
-    stopwords = set([
-        "我们", "你们", "他们", "因为", "所以", "以及", "就是", "这个", "那个", "可以",
-        "通过", "一个", "一些", "同时", "已经", "没有", "那么", "自己", "如果",
-        "不过", "但是", "不是", "非常", "还有", "以及", "和", "这些", "那些",
-        "什么", "怎么", "为什么", "他的", "她的", "它的", "而且", "或者",
-        "就像", "只是", "其实", "然后", "所有", "其他", "之后",
-    ])
-
-    words = [w for w in words if len(w) >= 2 and w not in stopwords]
-    # Get top 50 candidate keywords by raw frequency
-    candidates = [kw for kw, _ in Counter(words).most_common(50)]
-
-    # Second pass: count how many tweets contain each keyword
-    keyword_stats = []
-    for kw in candidates:
-        tweet_count = df["text"].astype(str).str.contains(kw, na=False).sum()
-        pct = tweet_count / total_tweets * 100
-        keyword_stats.append({"keyword": kw, "tweet_count": tweet_count, "pct_of_tweets": round(pct, 1)})
-
-    kw_df = pd.DataFrame(keyword_stats).sort_values("tweet_count", ascending=False).reset_index(drop=True)
-
-    # Translate keywords to English
-    print("  Translating keywords to English...")
-    translator = GoogleTranslator(source="zh-CN", target="en")
-    try:
-        all_kws = kw_df["keyword"].tolist()
-        # Batch translate by joining with newlines
-        translated = translator.translate("\n".join(all_kws)).split("\n")
-        if len(translated) == len(all_kws):
-            kw_df["english"] = translated
-        else:
-            kw_df["english"] = [translator.translate(kw) for kw in all_kws]
-    except Exception as e:
-        print(f"  Translation failed ({e}), falling back to one-by-one...")
-        kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
-
-    # Export
-    kw_csv = os.path.join(data_dir, "post", "top_keywords.csv")
-    kw_df.to_csv(kw_csv, index=False, encoding="utf-8-sig")
-
-    print(f"  Top 10 keywords (by tweet count):")
-    for _, row in kw_df.head(10).iterrows():
-        print(f"    {row['keyword']} ({row['english']}): {row['tweet_count']} tweets ({row['pct_of_tweets']}%)")
-    print(f"  Saved {kw_csv}")
-
-
-# ── 2. Posting Frequency ─────────────────────────────────────────────────────
+# ── 1. Posting Frequency ─────────────────────────────────────────────────────
 
 def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
-    print("\n── 2. Posting Frequency ──")
+    print("\n── 1. Posting Frequency ──")
 
     tl = os.path.join(data_dir, "timeline")
 
@@ -131,30 +70,10 @@ def analyze_posting_frequency(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {heatmap_csv}")
 
 
-# ── 3. Engagement Trends ─────────────────────────────────────────────────────
-
-def analyze_engagement(df: pd.DataFrame, data_dir: str):
-    print("\n── 3. Engagement Trends ──")
-
-    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
-
-    metrics = ["viewCount", "likeCount", "retweetCount", "replyCount", "quoteCount", "bookmarkCount", "total_engagement"]
-    monthly = df.groupby("month")[metrics].mean().sort_index().round(1)
-    monthly.columns = ["avg_views", "avg_likes", "avg_retweets", "avg_replies", "avg_quotes", "avg_bookmarks", "avg_total_engagement"]
-
-    engagement_csv = os.path.join(data_dir, "timeline", "monthly_engagement.csv")
-    monthly.to_csv(engagement_csv, encoding="utf-8-sig")
-
-    print(f"  Monthly engagement averages:")
-    for _, row in monthly.iterrows():
-        print(f"    {row.name}: views={row['avg_views']:.0f}, likes={row['avg_likes']:.0f}, engagement={row['avg_total_engagement']:.0f}")
-    print(f"  Saved {engagement_csv}")
-
-
-# ── 4. Posting Behavior ──────────────────────────────────────────────────────
+# ── 2. Posting Behavior ──────────────────────────────────────────────────────
 
 def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
-    print("\n── 4. Posting Behavior ──")
+    print("\n── 2. Posting Behavior ──")
 
     df = df.copy()
     df["dt"] = pd.to_datetime(df["datetime"])
@@ -186,7 +105,7 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     print(f"  Tweets per active day: mean={full_daily[full_daily['tweet_count']>0]['tweet_count'].mean():.1f}, max={full_daily['tweet_count'].max()}")
     print(f"  Saved {daily_csv}")
 
-    # --- Time gap distribution (15 buckets) ---
+    # --- Time gap distribution ---
     gaps_sec = df["dt"].diff().dt.total_seconds().dropna()
 
     buckets = [
@@ -286,19 +205,100 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {burst_csv} + {summary_csv}")
 
 
+# ── 3. Engagement Trends ─────────────────────────────────────────────────────
+
+def analyze_engagement(df: pd.DataFrame, data_dir: str):
+    print("\n── 3. Engagement Trends ──")
+
+    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
+
+    metrics = ["viewCount", "likeCount", "retweetCount", "replyCount", "quoteCount", "bookmarkCount", "total_engagement"]
+    monthly = df.groupby("month")[metrics].mean().sort_index().round(1)
+    monthly.columns = ["avg_views", "avg_likes", "avg_retweets", "avg_replies", "avg_quotes", "avg_bookmarks", "avg_total_engagement"]
+
+    engagement_csv = os.path.join(data_dir, "engagement", "monthly_engagement.csv")
+    monthly.to_csv(engagement_csv, encoding="utf-8-sig")
+
+    print(f"  Monthly engagement averages:")
+    for _, row in monthly.iterrows():
+        print(f"    {row.name}: views={row['avg_views']:.0f}, likes={row['avg_likes']:.0f}, engagement={row['avg_total_engagement']:.0f}")
+    print(f"  Saved {engagement_csv}")
+
+
+# ── 4. Keyword Frequency ─────────────────────────────────────────────────────
+
+def analyze_keywords(df: pd.DataFrame, data_dir: str):
+    print("\n── 4. Keyword Frequency ──")
+
+    total_tweets = len(df)
+
+    # First pass: get candidate keywords via jieba on all text
+    all_text = df["text"].astype(str).str.cat(sep=" ")
+    all_text = re.sub(r"http\S+", "", all_text)
+    all_text = re.sub(r"[a-zA-Z0-9]+", "", all_text)
+    all_text = re.sub(r"[^\u4e00-\u9fa5]", " ", all_text)
+
+    words = jieba.lcut(all_text)
+
+    stopwords = set([
+        "我们", "你们", "他们", "因为", "所以", "以及", "就是", "这个", "那个", "可以",
+        "通过", "一个", "一些", "同时", "已经", "没有", "那么", "自己", "如果",
+        "不过", "但是", "不是", "非常", "还有", "以及", "和", "这些", "那些",
+        "什么", "怎么", "为什么", "他的", "她的", "它的", "而且", "或者",
+        "就像", "只是", "其实", "然后", "所有", "其他", "之后",
+    ])
+
+    words = [w for w in words if len(w) >= 2 and w not in stopwords]
+    # Get top 50 candidate keywords by raw frequency
+    candidates = [kw for kw, _ in Counter(words).most_common(50)]
+
+    # Second pass: count how many tweets contain each keyword
+    keyword_stats = []
+    for kw in candidates:
+        tweet_count = df["text"].astype(str).str.contains(kw, na=False).sum()
+        pct = tweet_count / total_tweets * 100
+        keyword_stats.append({"keyword": kw, "tweet_count": tweet_count, "pct_of_tweets": round(pct, 1)})
+
+    kw_df = pd.DataFrame(keyword_stats).sort_values("tweet_count", ascending=False).reset_index(drop=True)
+
+    # Translate keywords to English
+    print("  Translating keywords to English...")
+    translator = GoogleTranslator(source="zh-CN", target="en")
+    try:
+        all_kws = kw_df["keyword"].tolist()
+        # Batch translate by joining with newlines
+        translated = translator.translate("\n".join(all_kws)).split("\n")
+        if len(translated) == len(all_kws):
+            kw_df["english"] = translated
+        else:
+            kw_df["english"] = [translator.translate(kw) for kw in all_kws]
+    except Exception as e:
+        print(f"  Translation failed ({e}), falling back to one-by-one...")
+        kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
+
+    # Export
+    kw_csv = os.path.join(data_dir, "post", "top_keywords.csv")
+    kw_df.to_csv(kw_csv, index=False, encoding="utf-8-sig")
+
+    print(f"  Top 10 keywords (by tweet count):")
+    for _, row in kw_df.head(10).iterrows():
+        print(f"    {row['keyword']} ({row['english']}): {row['tweet_count']} tweets ({row['pct_of_tweets']}%)")
+    print(f"  Saved {kw_csv}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 ANALYSES = {
-    "keywords": analyze_keywords,
     "posting": analyze_posting_frequency,
-    "engagement": analyze_engagement,
     "behavior": analyze_posting_behavior,
+    "engagement": analyze_engagement,
+    "keywords": analyze_keywords,
 }
 
 
 def run_analysis(user_name: str, only: str | None = None):
     data_dir = get_data_dir(user_name)
-    for sub in ["", "post", "timeline", "charts"]:
+    for sub in ["", "post", "timeline", "engagement", "charts"]:
         os.makedirs(os.path.join(data_dir, sub), exist_ok=True)
 
     df = load_tweets(user_name)
@@ -317,8 +317,8 @@ def run_analysis(user_name: str, only: str | None = None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python scripts/analyze.py <username> [--only keywords|posting|engagement]")
-        print("Example: python scripts/analyze.py usa912152217 --only engagement")
+        print("Usage: python scripts/analyze.py <username> [--only posting|behavior|engagement|keywords]")
+        print("Example: python scripts/analyze.py usa912152217 --only keywords")
         sys.exit(1)
 
     user = sys.argv[1]
