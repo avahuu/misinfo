@@ -392,6 +392,56 @@ def analyze_sentiment(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {topics_csv}")
 
 
+# ── 6. Sentiment Trends ──────────────────────────────────────────────────────
+
+TREND_LEADERS = {
+    "Trump": ["川普", "特朗普", "Trump"],
+    "Biden": ["拜登", "Biden"],
+    "Kamala Harris": ["哈里斯", "贺锦丽", "Kamala", "Harris", "贺哈哈", "哈三笑", "哈大嘴", "风尘三笑"],
+}
+
+
+def analyze_sentiment_trend(df: pd.DataFrame, data_dir: str):
+    print("\n── 6. Sentiment Trends (Monthly) ──")
+
+    sent_dir = os.path.join(data_dir, "sentiment")
+
+    months = sorted(df["month"].unique())
+    trend_rows = []
+
+    for month in months:
+        month_df = df[df["month"] == month]
+        row = {"month": month}
+
+        for name, search_terms in TREND_LEADERS.items():
+            pattern = "|".join(re.escape(t) for t in search_terms)
+            mask = month_df["text"].astype(str).str.contains(pattern, case=False, na=False)
+            matched = month_df[mask]
+
+            if len(matched) == 0:
+                row[f"{name}_avg"] = None
+                row[f"{name}_count"] = 0
+            else:
+                sentiments = matched["text"].apply(_get_sentiment)
+                row[f"{name}_avg"] = round(sentiments.mean(), 3)
+                row[f"{name}_count"] = len(matched)
+
+        trend_rows.append(row)
+
+    trend_df = pd.DataFrame(trend_rows)
+    trend_csv = os.path.join(sent_dir, "sentiment_trend.csv")
+    trend_df.to_csv(trend_csv, index=False, encoding="utf-8-sig")
+
+    print(f"  Monthly sentiment for {', '.join(TREND_LEADERS)}:")
+    for _, row in trend_df.iterrows():
+        parts = []
+        for name in TREND_LEADERS:
+            if row[f"{name}_count"] > 0:
+                parts.append(f"{name}={row[f'{name}_avg']:.3f} ({row[f'{name}_count']})")
+        print(f"    {row['month']}: {', '.join(parts)}")
+    print(f"  Saved {trend_csv}")
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 ANALYSES = {
@@ -400,6 +450,7 @@ ANALYSES = {
     "engagement": analyze_engagement,
     "keywords": analyze_keywords,
     "sentiment": analyze_sentiment,
+    "sentiment_trend": analyze_sentiment_trend,
 }
 
 
