@@ -226,6 +226,48 @@ def analyze_engagement(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {engagement_csv}")
 
 
+# ── 4. Top Engagement Content ────────────────────────────────────────────────
+
+def analyze_top_content(df: pd.DataFrame, data_dir: str):
+    print("\n── 4. Top Engagement Content ──")
+
+    eng_dir = os.path.join(data_dir, "engagement")
+    translator = GoogleTranslator(source="zh-CN", target="en")
+
+    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
+
+    rankings = {
+        "top_by_views": "viewCount",
+        "top_by_likes": "likeCount",
+        "top_by_engagement": "total_engagement",
+    }
+
+    for file_name, sort_col in rankings.items():
+        top = df.nlargest(10, sort_col)[
+            ["datetime", "text", "type", "viewCount", "likeCount",
+             "retweetCount", "replyCount", "quoteCount", "total_engagement"]
+        ].copy()
+
+        # Translate
+        texts = top["text"].astype(str).str[:200].tolist()
+        try:
+            translated = translator.translate("\n---\n".join(texts)).split("\n---\n")
+            if len(translated) == len(texts):
+                top["english"] = translated
+            else:
+                top["english"] = [translator.translate(t[:200]) for t in texts]
+        except Exception:
+            top["english"] = [translator.translate(t[:200]) for t in texts]
+
+        csv_path = os.path.join(eng_dir, f"{file_name}.csv")
+        top.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+        label = sort_col.replace("Count", "").replace("total_engagement", "engagement")
+        print(f"  {file_name}: top tweet has {top.iloc[0][sort_col]:,} {label}")
+        print(f"  Saved {csv_path}")
+
+
+
 # ── 4. Keyword Frequency ─────────────────────────────────────────────────────
 
 def analyze_keywords(df: pd.DataFrame, data_dir: str):
@@ -448,6 +490,7 @@ ANALYSES = {
     "posting": analyze_posting_frequency,
     "behavior": analyze_posting_behavior,
     "engagement": analyze_engagement,
+    "top_content": analyze_top_content,
     "keywords": analyze_keywords,
     "sentiment": analyze_sentiment,
     "sentiment_trend": analyze_sentiment_trend,
