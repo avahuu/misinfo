@@ -12,9 +12,25 @@ from deep_translator import GoogleTranslator
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+ENGAGEMENT_COLS = ["likeCount", "retweetCount", "replyCount", "quoteCount"]
+
+
 def get_data_dir(user_name: str) -> str:
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     return os.path.join(project_root, "data", user_name)
+
+
+def _translate_batch(texts: list[str], source="zh-CN", target="en") -> list[str]:
+    """Batch translate with fallback to one-by-one."""
+    translator = GoogleTranslator(source=source, target=target)
+    try:
+        joined = "\n---\n".join(texts)
+        result = translator.translate(joined).split("\n---\n")
+        if len(result) == len(texts):
+            return result
+    except Exception:
+        pass
+    return [translator.translate(t) for t in texts]
 
 
 def parse_dt(s):
@@ -211,9 +227,9 @@ def analyze_posting_behavior(df: pd.DataFrame, data_dir: str):
 def analyze_engagement(df: pd.DataFrame, data_dir: str):
     print("\n── 3. Engagement Trends ──")
 
-    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
+    df["total_engagement"] = df[ENGAGEMENT_COLS].sum(axis=1)
 
-    metrics = ["viewCount", "likeCount", "retweetCount", "replyCount", "quoteCount", "bookmarkCount", "total_engagement"]
+    metrics = ["viewCount"] + ENGAGEMENT_COLS + ["bookmarkCount", "total_engagement"]
     monthly = df.groupby("month")[metrics].mean().sort_index().round(1)
     monthly.columns = ["avg_views", "avg_likes", "avg_retweets", "avg_replies", "avg_quotes", "avg_bookmarks", "avg_total_engagement"]
 
@@ -232,9 +248,7 @@ def analyze_top_content(df: pd.DataFrame, data_dir: str):
     print("\n── 4. Top Engagement Content ──")
 
     eng_dir = os.path.join(data_dir, "engagement")
-    translator = GoogleTranslator(source="zh-CN", target="en")
-
-    df["total_engagement"] = df["likeCount"] + df["retweetCount"] + df["replyCount"] + df["quoteCount"]
+    df["total_engagement"] = df[ENGAGEMENT_COLS].sum(axis=1)
 
     rankings = {
         "top_by_views": "viewCount",
@@ -248,16 +262,7 @@ def analyze_top_content(df: pd.DataFrame, data_dir: str):
              "retweetCount", "replyCount", "quoteCount", "total_engagement"]
         ].copy()
 
-        # Translate
-        texts = top["text"].astype(str).str[:200].tolist()
-        try:
-            translated = translator.translate("\n---\n".join(texts)).split("\n---\n")
-            if len(translated) == len(texts):
-                top["english"] = translated
-            else:
-                top["english"] = [translator.translate(t[:200]) for t in texts]
-        except Exception:
-            top["english"] = [translator.translate(t[:200]) for t in texts]
+        top["english"] = _translate_batch(top["text"].astype(str).str[:200].tolist())
 
         csv_path = os.path.join(eng_dir, f"{file_name}.csv")
         top.to_csv(csv_path, index=False, encoding="utf-8-sig")
@@ -267,11 +272,10 @@ def analyze_top_content(df: pd.DataFrame, data_dir: str):
         print(f"  Saved {csv_path}")
 
 
-
-# ── 4. Keyword Frequency ─────────────────────────────────────────────────────
+# ── 5. Keyword Frequency ─────────────────────────────────────────────────────
 
 def analyze_keywords(df: pd.DataFrame, data_dir: str):
-    print("\n── 4. Keyword Frequency ──")
+    print("\n── 5. Keyword Frequency ──")
 
     total_tweets = len(df)
 
@@ -306,18 +310,7 @@ def analyze_keywords(df: pd.DataFrame, data_dir: str):
 
     # Translate keywords to English
     print("  Translating keywords to English...")
-    translator = GoogleTranslator(source="zh-CN", target="en")
-    try:
-        all_kws = kw_df["keyword"].tolist()
-        # Batch translate by joining with newlines
-        translated = translator.translate("\n".join(all_kws)).split("\n")
-        if len(translated) == len(all_kws):
-            kw_df["english"] = translated
-        else:
-            kw_df["english"] = [translator.translate(kw) for kw in all_kws]
-    except Exception as e:
-        print(f"  Translation failed ({e}), falling back to one-by-one...")
-        kw_df["english"] = [translator.translate(kw) for kw in kw_df["keyword"]]
+    kw_df["english"] = _translate_batch(kw_df["keyword"].tolist())
 
     # Export
     kw_csv = os.path.join(data_dir, "post", "top_keywords.csv")
@@ -329,7 +322,7 @@ def analyze_keywords(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {kw_csv}")
 
 
-# ── 5. Sentiment Analysis ────────────────────────────────────────────────────
+# ── 6. Sentiment Analysis ────────────────────────────────────────────────────
 
 LEADERS = {
     "Trump": ["川普", "特朗普", "Trump"],
@@ -409,7 +402,7 @@ def _score_entities(df: pd.DataFrame, entities: dict) -> pd.DataFrame:
 
 
 def analyze_sentiment(df: pd.DataFrame, data_dir: str):
-    print("\n── 5. Sentiment Analysis ──")
+    print("\n── 6. Sentiment Analysis ──")
 
     sent_dir = os.path.join(data_dir, "sentiment")
 
@@ -434,17 +427,14 @@ def analyze_sentiment(df: pd.DataFrame, data_dir: str):
     print(f"  Saved {topics_csv}")
 
 
-# ── 6. Sentiment Trends ──────────────────────────────────────────────────────
+# ── 7. Sentiment Trends ──────────────────────────────────────────────────────
 
-TREND_LEADERS = {
-    "Trump": ["川普", "特朗普", "Trump"],
-    "Biden": ["拜登", "Biden"],
-    "Kamala Harris": ["哈里斯", "贺锦丽", "Kamala", "Harris", "贺哈哈", "哈三笑", "哈大嘴", "风尘三笑"],
-}
+# Subset of LEADERS to track monthly
+TREND_LEADERS = {k: LEADERS[k] for k in ["Trump", "Biden", "Kamala Harris"]}
 
 
 def analyze_sentiment_trend(df: pd.DataFrame, data_dir: str):
-    print("\n── 6. Sentiment Trends (Monthly) ──")
+    print("\n── 7. Sentiment Trends (Monthly) ──")
 
     sent_dir = os.path.join(data_dir, "sentiment")
 
@@ -518,7 +508,8 @@ def run_analysis(user_name: str, only: str | None = None):
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python scripts/analyze.py <username> [--only posting|behavior|engagement|keywords]")
+        options = "|".join(ANALYSES)
+        print(f"Usage: python scripts/analyze.py <username> [--only {options}]")
         print("Example: python scripts/analyze.py usa912152217 --only keywords")
         sys.exit(1)
 
