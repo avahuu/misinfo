@@ -27,26 +27,50 @@ pip install requests python-dotenv python-dateutil pandas jieba deep-translator
 ```
 
 Add your [twitterapi.io](https://twitterapi.io) key to `.env`:
+
 ```
 API_KEY=your_key_here
 ```
 
-## Usage
+## Analysis Features
 
-```bash
-# 1. Scrape tweets (past 2 years, with resume support)
-python -u scripts/scrape.py <username>
+### 1. Timeline
 
-# 2. Run all analyses
-python scripts/analyze.py <username>
+- **Activity Heatmap**: Weekday × hour/month posting matrix.
+- **Burst Behavior**: Automatic detection of high-frequency posting sessions (e.g., 3+ tweets within 5-minute intervals).
+- **Daily Volume**: Trends in tweet/reply volume over time.
+- **Time Gaps**: Distribution of intervals between posts to identify automated or rapid-fire behavior.
 
-# 3. Run a single analysis
-python scripts/analyze.py <username> --only keywords
-python scripts/analyze.py <username> --only posting
-python scripts/analyze.py <username> --only engagement
-```
+### 2. Content
 
-Data outputs are saved to `data/<username>/`.
+- **Monthly Trends**: Bar charts showing tweet volume shifts over time.
+- **Keyword Analysis**:
+  - Top 50 keywords by raw frequency and tweet percentage.
+  - **Packed Bubble Chart**: Visual representation where circle area = tweet count.
+
+### 3. Engagement (Top 10)\*\*: Rankings of posts by views, likes, and total engagement.
+
+### 4. Sentiment Analysis
+
+- **By Leader**: Sentiment scores for key figures (Trump, Biden etc.).
+- **By Topics**: Sentiment analysis across specific themes (Immigration, Election, Media, etc.).
+- **Sentiment Over Time**: Monthly tracking of sentiment trends for major political leaders.
+
+---
+
+## Viz
+
+### Burst Behavior Timeline
+
+Identifies rapid-fire posting sessions, highlighting potential bot-like or high-intensity activity.
+![Burst Timeline](data/usa912152217/charts/burst_timeline.png)
+
+### Activity Heatmap
+
+Visualizes the rhythm of an account, showing which days and times are most active.
+![Activity Heatmap](data/usa912152217/charts/weekday_month_heatmap.png)
+
+---
 
 ## Scrape Methodology Notes
 
@@ -63,11 +87,3 @@ Each tweet is classified as `original` or `reply`:
   - The Twitter search API inconsistently returns native reposts (the "repost" button), so RT coverage is unreliable
 - **Replies**: For existing scraped data, replies are detected **heuristically** by checking if the tweet text starts with `@username`. This is approximate — future scrapes use the API's `isReply` field for accurate detection.
 - **Original**: Everything else (the account's own tweets)
-
-### What the search API returns
-
-The scraper uses `from:<username>` search via twitterapi.io. This returns:
-- ✅ Original tweets
-- ✅ Replies
-- ⚠️ Some retweets (with `RT @` prefix), but **not all** native reposts
-- ❌ Native reposts (the repost button) are often missing from search results

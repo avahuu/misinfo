@@ -115,11 +115,162 @@ def viz_burst_timeline(user_name: str):
     print(f"Saved {out_path}")
 
 
+# ── 3. Monthly Trends Bar Chart ────────────────────────────────────────────────
+
+def viz_monthly_trends(user_name: str):
+    data_dir = get_data_dir(user_name)
+    csv_path = os.path.join(data_dir, "timeline", "monthly_posting.csv")
+
+    if not os.path.exists(csv_path):
+        print(f"Error: {csv_path} not found.")
+        return
+
+    df = pd.read_csv(csv_path)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    sns.barplot(data=df, x="month", y="tweet_count", color="#3498db", ax=ax)
+    
+    ax.set_title(f"Monthly Posting Trends (@{user_name})")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Tweet Count")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+
+    out_path = os.path.join(data_dir, "charts", "monthly_trends.png")
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved {out_path}")
+
+
+# ── 4. Keyword Bubble Chart ───────────────────────────────────────────────────
+
+def viz_keyword_bubbles(user_name: str):
+    data_dir = get_data_dir(user_name)
+    csv_path = os.path.join(data_dir, "post", "top_keywords.csv")
+
+    if not os.path.exists(csv_path):
+        print(f"Error: {csv_path} not found.")
+        return
+
+    df = pd.read_csv(csv_path).head(30)
+    
+    # Simple "packed" bubble chart using scatter with random jitter
+    # Real circle packing is complex, this provides the visual essence
+    fig, ax = plt.subplots(figsize=(10, 10))
+    
+    # Normalize sizes for circles
+    sizes = df["tweet_count"]
+    sizes = (sizes / sizes.max()) * 3000
+    
+    # Generate random positions
+    np.random.seed(42)
+    x = np.random.rand(len(df))
+    y = np.random.rand(len(df))
+    
+    scatter = ax.scatter(x, y, s=sizes, alpha=0.6, edgecolors="white", cmap="viridis", c=range(len(df)))
+    
+    for i, row in df.iterrows():
+        label = f"{row['keyword']}\n({row['english']})"
+        ax.text(x[i], y[i], label, ha='center', va='center', fontsize=8, fontweight='bold')
+
+    ax.set_xlim(-0.1, 1.1)
+    ax.set_ylim(-0.1, 1.1)
+    ax.axis('off')
+    ax.set_title(f"Top Keywords - Tweet Volume (@{user_name})")
+    
+    plt.tight_layout()
+    out_path = os.path.join(data_dir, "charts", "keyword_bubbles.png")
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved {out_path}")
+
+
+# ── 5. Sentiment Bar Charts ───────────────────────────────────────────────────
+
+def viz_sentiment(user_name: str):
+    data_dir = get_data_dir(user_name)
+    leaders_csv = os.path.join(data_dir, "sentiment", "leader_sentiment.csv")
+    topics_csv = os.path.join(data_dir, "sentiment", "topic_sentiment.csv")
+
+    if os.path.exists(leaders_csv):
+        df = pd.read_csv(leaders_csv).dropna(subset=["avg_sentiment"])
+        if len(df) > 0:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            df = df.sort_values("avg_sentiment")
+            colors = ["#e74c3c" if s < 0.5 else "#2ecc71" for s in df["avg_sentiment"]]
+            sns.barplot(data=df, x="entity", y="avg_sentiment", palette=colors, ax=ax)
+            ax.axhline(0.5, color="gray", linestyle="--", alpha=0.5)
+            ax.set_title(f"Sentiment Analysis by Leader (@{user_name})")
+            ax.set_ylim(0, 1)
+            plt.xticks(rotation=45, ha="right")
+            plt.tight_layout()
+            out_path = os.path.join(data_dir, "charts", "sentiment_leaders.png")
+            plt.savefig(out_path, dpi=150)
+            plt.close()
+            print(f"Saved {out_path}")
+
+    if os.path.exists(topics_csv):
+        df = pd.read_csv(topics_csv).dropna(subset=["avg_sentiment"])
+        if len(df) > 0:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            df = df.sort_values("avg_sentiment")
+            colors = ["#e74c3c" if s < 0.5 else "#2ecc71" for s in df["avg_sentiment"]]
+            sns.barplot(data=df, x="entity", y="avg_sentiment", palette=colors, ax=ax)
+            ax.axhline(0.5, color="gray", linestyle="--", alpha=0.5)
+            ax.set_title(f"Sentiment Analysis by Topic (@{user_name})")
+            ax.set_ylim(0, 1)
+            plt.xticks(rotation=45, ha="right")
+            plt.tight_layout()
+            out_path = os.path.join(data_dir, "charts", "sentiment_topics.png")
+            plt.savefig(out_path, dpi=150)
+            plt.close()
+            print(f"Saved {out_path}")
+
+
+# ── 6. Leader Sentiment Over Time ───────────────────────────────────────────
+
+def viz_sentiment_trend(user_name: str):
+    data_dir = get_data_dir(user_name)
+    csv_path = os.path.join(data_dir, "sentiment", "sentiment_trend.csv")
+
+    if not os.path.exists(csv_path):
+        print(f"Error: {csv_path} not found.")
+        return
+
+    df = pd.read_csv(csv_path)
+    
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    # Find columns that end with _avg
+    avg_cols = [c for c in df.columns if c.endswith("_avg")]
+    for col in avg_cols:
+        label = col.replace("_avg", "")
+        ax.plot(df["month"], df[col], marker='o', label=label)
+    
+    ax.axhline(0.5, color="gray", linestyle="--", alpha=0.5)
+    ax.set_title(f"Leader Sentiment Trends Over Time (@{user_name})")
+    ax.set_xlabel("Month")
+    ax.set_ylabel("Avg Sentiment Score")
+    ax.set_ylim(0, 1)
+    ax.legend()
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+
+    out_path = os.path.join(data_dir, "charts", "sentiment_trends.png")
+    plt.savefig(out_path, dpi=150)
+    plt.close()
+    print(f"Saved {out_path}")
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 CHARTS = {
     "heatmap": viz_heatmap,
     "burst": viz_burst_timeline,
+    "trends": viz_monthly_trends,
+    "bubbles": viz_keyword_bubbles,
+    "sentiment": viz_sentiment,
+    "sentiment_trend": viz_sentiment_trend,
 }
 
 if __name__ == "__main__":
