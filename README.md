@@ -63,12 +63,12 @@ API_KEY=your_key_here
 ### Burst Behavior Timeline
 
 Identifies rapid-fire posting sessions, highlighting potential bot-like or high-intensity activity.
-![Burst Timeline](data/usa912152217/charts/burst_timeline.png)
+![Burst Timeline](img/burst_timeline.png)
 
 ### Activity Heatmap
 
 Visualizes the rhythm of an account, showing which days and times are most active.
-![Activity Heatmap](data/usa912152217/charts/weekday_month_heatmap.png)
+![Activity Heatmap](img/weekday_month_heatmap.png)
 
 ---
 
